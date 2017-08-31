@@ -102,6 +102,39 @@ named!(pub expr<Expr>,
             map!(expression, Expr::from_expression))
 );
 
+pub fn plus_op(acc: i64, next: i64) -> i64 {
+    acc + next
+}
+
+pub fn minus_op(acc: i64, next: i64) -> i64 {
+    acc - next
+}
+
+pub fn mult_op(acc: i64, next: i64) -> i64 {
+    acc * next
+}
+
+pub fn div_op(acc: i64, next: i64) -> i64 {
+    acc / next
+}
+
+pub fn eval(e: Expr) -> i64 {
+    match e {
+        Expr::Number(x) => x,
+        Expr::Expression(e) => {
+            let op_fn = match e.operator {
+                Operator::Plus  => plus_op  as fn(i64, i64) -> i64,
+                Operator::Minus => minus_op as fn(i64, i64) -> i64,
+                Operator::Mult  => mult_op  as fn(i64, i64) -> i64,
+                Operator::Div   => div_op   as fn(i64, i64) -> i64,
+            };
+            let mut operands : Vec<i64> = e.operands.into_iter().map(eval).collect();
+            let first = operands.swap_remove(0);
+            operands.into_iter().fold(first, op_fn)
+        }
+    }
+}
+
 fn main() {
     let mut rl = Editor::<()>::new();
     if let Err(_) = rl.load_history("history.txt") {
@@ -114,7 +147,7 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(&line);
                 match expr(line.as_bytes()) {
-                    IResult::Done(_, e) => println!("No you're a {:?}", e),
+                    IResult::Done(_, e) => println!("No you're a {:?}", eval(e)),
                     IResult::Incomplete(rest) => println!("Incomplete input: {:?}", rest),
                     IResult::Error(_) => ()
                 }
@@ -164,5 +197,17 @@ mod tests {
         assert_eq!(expr(b"( + 1 2 )"), IResult::Done(&b""[..], e.clone()));
         assert_eq!(expr(b"(    +   1    2   )"), IResult::Done(&b""[..], e.clone()));
         assert_eq!(expr(b"  (    +   1    2   )"), IResult::Done(&b""[..], e.clone()));
+    }
+
+    fn eval_expr(input: &str) -> i64 {
+        let (_, e) = expr(input.as_bytes()).unwrap();
+        eval(e)
+    }
+
+    #[test]
+    fn test_eval() {
+        assert_eq!(eval_expr("1"), 1);
+        assert_eq!(eval_expr("(+ 1 0)"), 1);
+        assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), 14);
     }
 }
