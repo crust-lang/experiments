@@ -2,10 +2,12 @@
 extern crate nom;
 extern crate rustyline;
 
-use nom::{IResult,digit,multispace};
+use nom::{IResult,anychar,digit,multispace};
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+
+use std::iter::FromIterator;
 
 use std::str;
 use std::str::FromStr;
@@ -19,27 +21,6 @@ named!(pub number<i64>,
            FromStr::from_str
        )
 );
-
-#[derive(Clone,Copy,Debug,PartialEq)]
-pub enum Symbol {
-    Plus,
-    Minus,
-    Mult,
-    Div,
-}
-
-impl Symbol {
-    fn from_char(c: char) -> Result<Self, ()> {
-        use Symbol::*;
-        match c {
-            '+' => Ok(Plus),
-            '-' => Ok(Minus),
-            '*' => Ok(Mult),
-            '/' => Ok(Div),
-            _ => Err(()),
-        }
-    }
-}
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct Expression {
@@ -57,7 +38,7 @@ impl Expression {
 #[derive(Clone,Debug,PartialEq)]
 pub enum Expr {
     Number(i64),
-    Symbol(Symbol),
+    Symbol(String),
     Expression(Expression),
 }
 
@@ -66,19 +47,24 @@ impl Expr {
         Expr::Number(x)
     }
 
-    fn from_symbol(s: Symbol) -> Self {
-        Expr::Symbol(s)
+    fn from_symbol((s, _): (Vec<char>, char)) -> Self {
+        let str : String = String::from_iter(s);
+        Expr::Symbol(str)
     }
 
     fn from_expression(e: Expression) -> Self {
         Expr::Expression(e)
     }
+
+    fn symbol_from_string(s: &str) -> Self {
+        Expr::Symbol(s.to_string())
+    }
 }
 
-named!(pub symbol<Symbol>,
-       map_res!(
-           one_of!("+-*/"),
-           Symbol::from_char
+named!(pub symbol<Expr>,
+       map!(
+           many_till!(call!(anychar), peek!(one_of!("() \t\r\n"))),
+           Expr::from_symbol
        )
 );
 
@@ -99,27 +85,21 @@ named!(pub expression<Expression>,
 );
 
 named!(pub expr<Expr>,
-       do_parse!(
-                opt!(multispace) >>
-           exp: alt!(map!(number, Expr::from_digit) |
-                     map!(symbol, Expr::from_symbol) |
-                     map!(expression, Expr::from_expression)) >>
-               (exp)
-       )
+       alt!(map!(number, Expr::from_digit) |
+            map!(expression, Expr::from_expression) |
+            symbol)
 );
 
-#[derive(Clone,Debug,PartialEq)]
-pub enum LVal {
-    Num(i64),
-    Symbol(Symbol),
-}
+named!(pub line<Expr>,
+       ws!(expr)
+);
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Error {
     DivideByZero
 }
 
-fn map2<F: Fn(LVal, LVal) -> Result<LVal,Error>>(a: Result<LVal, Error>, b: Result<LVal, Error>, f: F) -> Result<LVal, Error> {
+fn map2<F: Fn(Expr, Expr) -> Result<Expr,Error>>(a: Result<Expr, Error>, b: Result<Expr, Error>, f: F) -> Result<Expr, Error> {
     match a {
         Ok(a) => {
             match b {
@@ -131,25 +111,25 @@ fn map2<F: Fn(LVal, LVal) -> Result<LVal,Error>>(a: Result<LVal, Error>, b: Resu
     }
 }
 
-// pub fn plus_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+// pub fn plus_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
 //     map2(acc, next, |acc, next| {
 //         Ok(acc + next)
 //     })
 // }
 
-// pub fn minus_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+// pub fn minus_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
 //     map2(acc, next, |acc, next| {
 //         Ok(acc - next)
 //     })
 // }
 
-// pub fn mult_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+// pub fn mult_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
 //     map2(acc, next, |acc, next| {
 //         Ok(acc * next)
 //     })
 // }
 
-// pub fn div_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+// pub fn div_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
 //     map2(acc, next, |acc, next| {
 //         if next == 0 {
 //             Err(Error::DivideByZero)
@@ -159,12 +139,12 @@ fn map2<F: Fn(LVal, LVal) -> Result<LVal,Error>>(a: Result<LVal, Error>, b: Resu
 //     })
 // }
 
-// pub fn eval(e: Expr) -> Result<LVal, Error> {
+// pub fn eval(e: Expr) -> Result<Expr, Error> {
 //     match e {
 //         Expr::Number(x) => Ok(x),
 //         Expr::Symbol(s) => Ok(s),
 //         Expr::Expression(e) => {
-//             let mut els : Vec<Result<LVal,Error>> = e.els.into_iter().map(eval).collect();
+//             let mut els : Vec<Result<Expr,Error>> = e.els.into_iter().map(eval).collect();
 //             let first = els.swap_remove(0);
 //             els.into_iter().fold(first, plus_op)
 //         }
@@ -225,26 +205,26 @@ mod tests {
 
     #[test]
     fn test_parse_symbol() {
-        assert_eq!(symbol(b"+"), done(Symbol::Plus));
-        assert_eq!(symbol(b"-"), done(Symbol::Minus));
-        assert_eq!(symbol(b"*"), done(Symbol::Mult));
-        assert_eq!(symbol(b"/"), done(Symbol::Div));
+        assert_eq!(symbol(b"+ "), done_leftover(&b" "[..], Expr::symbol_from_string("+")));
+        assert_eq!(symbol(b"- "), done_leftover(&b" "[..], Expr::symbol_from_string("-")));
+        assert_eq!(symbol(b"* "), done_leftover(&b" "[..], Expr::symbol_from_string("*")));
+        assert_eq!(symbol(b"/ "), done_leftover(&b" "[..], Expr::symbol_from_string("/")));
     }
 
     #[test]
     fn test_parse_expr() {
         let e = Expr::from_expression(
-            Expression::from_tuple(vec![Expr::Symbol(Symbol::Plus),
+            Expression::from_tuple(vec![Expr::symbol_from_string("+"),
                                         Expr::Number(1),
                                         Expr::Number(2)]));
         assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
         assert_eq!(expr(b"( + 1 2 )"), done(e.clone()));
         assert_eq!(expr(b"(    +   1    2   )"), done(e.clone()));
-        assert_eq!(expr(b"  (    +   1    2   )"), done(e.clone()));
-        assert_eq!(expr(b"(    +   1    2   )  "), done_leftover(&b"  "[..], e.clone()));
+        assert_eq!(line(b"  (    +   1    2   )"), done(e.clone()));
+        assert_eq!(line(b"(    +   1    2   )  "), done(e.clone()));
     }
 
-    // fn eval_expr(input: &'static str) -> IResult<&[u8], LVal> {
+    // fn eval_expr(input: &'static str) -> IResult<&[u8], Expr> {
     //     expr(input.as_bytes()).map(|e| eval(e).unwrap())
     // }
 
