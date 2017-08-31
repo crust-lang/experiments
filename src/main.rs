@@ -57,12 +57,17 @@ impl Expression {
 #[derive(Clone,Debug,PartialEq)]
 pub enum Expr {
     Number(i64),
+    Symbol(Symbol),
     Expression(Expression),
 }
 
 impl Expr {
     fn from_digit(x: i64) -> Self {
         Expr::Number(x)
+    }
+
+    fn from_symbol(s: Symbol) -> Self {
+        Expr::Symbol(s)
     }
 
     fn from_expression(e: Expression) -> Self {
@@ -97,17 +102,24 @@ named!(pub expr<Expr>,
        do_parse!(
                 opt!(multispace) >>
            exp: alt!(map!(number, Expr::from_digit) |
+                     map!(symbol, Expr::from_symbol) |
                      map!(expression, Expr::from_expression)) >>
                (exp)
        )
 );
 
 #[derive(Clone,Debug,PartialEq)]
+pub enum LVal {
+    Num(i64),
+    Symbol(Symbol),
+}
+
+#[derive(Clone,Debug,PartialEq)]
 pub enum Error {
     DivideByZero
 }
 
-fn map2<F: Fn(i64, i64) -> Result<i64,Error>>(a: Result<i64, Error>, b: Result<i64, Error>, f: F) -> Result<i64, Error> {
+fn map2<F: Fn(LVal, LVal) -> Result<LVal,Error>>(a: Result<LVal, Error>, b: Result<LVal, Error>, f: F) -> Result<LVal, Error> {
     match a {
         Ok(a) => {
             match b {
@@ -119,44 +131,45 @@ fn map2<F: Fn(i64, i64) -> Result<i64,Error>>(a: Result<i64, Error>, b: Result<i
     }
 }
 
-pub fn plus_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
-    map2(acc, next, |acc, next| {
-        Ok(acc + next)
-    })
-}
+// pub fn plus_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+//     map2(acc, next, |acc, next| {
+//         Ok(acc + next)
+//     })
+// }
 
-pub fn minus_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
-    map2(acc, next, |acc, next| {
-        Ok(acc - next)
-    })
-}
+// pub fn minus_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+//     map2(acc, next, |acc, next| {
+//         Ok(acc - next)
+//     })
+// }
 
-pub fn mult_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
-    map2(acc, next, |acc, next| {
-        Ok(acc * next)
-    })
-}
+// pub fn mult_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+//     map2(acc, next, |acc, next| {
+//         Ok(acc * next)
+//     })
+// }
 
-pub fn div_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
-    map2(acc, next, |acc, next| {
-        if next == 0 {
-            Err(Error::DivideByZero)
-        } else {
-            Ok(acc / next)
-        }
-    })
-}
+// pub fn div_op(acc: Result<LVal,Error>, next: Result<LVal,Error>) -> Result<LVal, Error> {
+//     map2(acc, next, |acc, next| {
+//         if next == 0 {
+//             Err(Error::DivideByZero)
+//         } else {
+//             Ok(acc / next)
+//         }
+//     })
+// }
 
-pub fn eval(e: Expr) -> Result<i64, Error> {
-    match e {
-        Expr::Number(x) => Ok(x),
-        Expr::Expression(e) => {
-            let mut els : Vec<Result<i64,Error>> = e.els.into_iter().map(eval).collect();
-            let first = els.swap_remove(0);
-            els.into_iter().fold(first, plus_op)
-        }
-    }
-}
+// pub fn eval(e: Expr) -> Result<LVal, Error> {
+//     match e {
+//         Expr::Number(x) => Ok(x),
+//         Expr::Symbol(s) => Ok(s),
+//         Expr::Expression(e) => {
+//             let mut els : Vec<Result<LVal,Error>> = e.els.into_iter().map(eval).collect();
+//             let first = els.swap_remove(0);
+//             els.into_iter().fold(first, plus_op)
+//         }
+//     }
+//}
 
 fn main() {
     let mut rl = Editor::<()>::new();
@@ -170,7 +183,7 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(&line);
                 match expr(line.as_bytes()) {
-                    IResult::Done(_, e) => println!("{:?}", eval(e)),
+                    IResult::Done(_, e) => println!("{:?}", e),
                     IResult::Incomplete(rest) => println!("Incomplete input: {:?}", rest),
                     IResult::Error(_) => ()
                 }
@@ -221,7 +234,8 @@ mod tests {
     #[test]
     fn test_parse_expr() {
         let e = Expr::from_expression(
-            Expression::from_tuple(vec![Expr::Number(1),
+            Expression::from_tuple(vec![Expr::Symbol(Symbol::Plus),
+                                        Expr::Number(1),
                                         Expr::Number(2)]));
         assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
         assert_eq!(expr(b"( + 1 2 )"), done(e.clone()));
@@ -230,14 +244,14 @@ mod tests {
         assert_eq!(expr(b"(    +   1    2   )  "), done_leftover(&b"  "[..], e.clone()));
     }
 
-    fn eval_expr(input: &'static str) -> IResult<&[u8], i64> {
-        expr(input.as_bytes()).map(|e| eval(e).unwrap())
-    }
+    // fn eval_expr(input: &'static str) -> IResult<&[u8], LVal> {
+    //     expr(input.as_bytes()).map(|e| eval(e).unwrap())
+    // }
 
-    #[test]
-    fn test_eval() {
-        assert_eq!(eval_expr("1"), done(1));
-        assert_eq!(eval_expr("(+ 1 0)"), done(1));
-        assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), done(14));
-    }
+    // #[test]
+    // fn test_eval() {
+    //     assert_eq!(eval_expr("1"), done(1));
+    //     assert_eq!(eval_expr("(+ 1 0)"), done(1));
+    //     assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), done(14));
+    // }
 }
