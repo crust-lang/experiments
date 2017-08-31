@@ -43,16 +43,13 @@ impl Symbol {
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct Expression {
-    operator: Symbol,
-    operands: Vec<Expr>
+    els: Vec<Expr>
 }
 
 impl Expression {
-    fn from_tuple(t: (Symbol, Vec<Expr>)) -> Self {
-        let (operator, operands) = t;
+    fn from_tuple(els: Vec<Expr>) -> Self {
         Self {
-            operator: operator,
-            operands: operands,
+            els: els,
         }
     }
 }
@@ -73,7 +70,7 @@ impl Expr {
     }
 }
 
-named!(pub operator<Symbol>,
+named!(pub symbol<Symbol>,
        map_res!(
            one_of!("+-*/"),
            Symbol::from_char
@@ -85,12 +82,10 @@ named!(pub expression<Expression>,
            delimited!(
                char!('('),
                do_parse!(
-                             opt!(multispace) >>
-                   operator: operator >>
-                             multispace >>
-                   operands: separated_nonempty_list_complete!(multispace, expr) >>
-                             opt!(multispace) >>
-                       (operator, operands)
+                        opt!(multispace) >>
+                   els: separated_nonempty_list_complete!(multispace, expr) >>
+                        opt!(multispace) >>
+                       (els)
                ),
                char!(')')
            ),
@@ -102,8 +97,7 @@ named!(pub expr<Expr>,
        do_parse!(
                 opt!(multispace) >>
            exp: alt!(map!(number, Expr::from_digit) |
-                         map!(expression, Expr::from_expression)) >>
-//                opt!(multispace) >>
+                     map!(expression, Expr::from_expression)) >>
                (exp)
        )
 );
@@ -157,15 +151,9 @@ pub fn eval(e: Expr) -> Result<i64, Error> {
     match e {
         Expr::Number(x) => Ok(x),
         Expr::Expression(e) => {
-            let op_fn = match e.operator {
-                Symbol::Plus  => plus_op  as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
-                Symbol::Minus => minus_op as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
-                Symbol::Mult  => mult_op  as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
-                Symbol::Div   => div_op   as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
-            };
-            let mut operands : Vec<Result<i64,Error>> = e.operands.into_iter().map(eval).collect();
-            let first = operands.swap_remove(0);
-            operands.into_iter().fold(first, op_fn)
+            let mut els : Vec<Result<i64,Error>> = e.els.into_iter().map(eval).collect();
+            let first = els.swap_remove(0);
+            els.into_iter().fold(first, plus_op)
         }
     }
 }
@@ -223,18 +211,18 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_operator() {
-        assert_eq!(operator(b"+"), done(Symbol::Plus));
-        assert_eq!(operator(b"-"), done(Symbol::Minus));
-        assert_eq!(operator(b"*"), done(Symbol::Mult));
-        assert_eq!(operator(b"/"), done(Symbol::Div));
+    fn test_parse_symbol() {
+        assert_eq!(symbol(b"+"), done(Symbol::Plus));
+        assert_eq!(symbol(b"-"), done(Symbol::Minus));
+        assert_eq!(symbol(b"*"), done(Symbol::Mult));
+        assert_eq!(symbol(b"/"), done(Symbol::Div));
     }
 
     #[test]
     fn test_parse_expr() {
         let e = Expr::from_expression(
-            Expression::from_tuple((Symbol::Plus, vec![Expr::Number(1),
-                                                       Expr::Number(2)])));
+            Expression::from_tuple(vec![Expr::Number(1),
+                                        Expr::Number(2)]));
         assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
         assert_eq!(expr(b"( + 1 2 )"), done(e.clone()));
         assert_eq!(expr(b"(    +   1    2   )"), done(e.clone()));
