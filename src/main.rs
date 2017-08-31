@@ -82,24 +82,30 @@ named!(pub operator<Symbol>,
 
 named!(pub expression<Expression>,
        map!(
-           do_parse!(
-               opt!(multispace) >>
-                   char!('(') >>
-                   opt!(multispace) >>
+           delimited!(
+               char!('('),
+               do_parse!(
+                             opt!(multispace) >>
                    operator: operator >>
-                   opt!(multispace) >>
+                             multispace >>
                    operands: separated_nonempty_list_complete!(multispace, expr) >>
-                   opt!(multispace) >>
-                   char!(')') >>
-                   (operator, operands)
+                             opt!(multispace) >>
+                       (operator, operands)
+               ),
+               char!(')')
            ),
            Expression::from_tuple
        )
 );
 
 named!(pub expr<Expr>,
-       alt!(map!(number, Expr::from_digit) |
-            map!(expression, Expr::from_expression))
+       do_parse!(
+                opt!(multispace) >>
+           exp: alt!(map!(number, Expr::from_digit) |
+                         map!(expression, Expr::from_expression)) >>
+//                opt!(multispace) >>
+               (exp)
+       )
 );
 
 #[derive(Clone,Debug,PartialEq)]
@@ -203,40 +209,48 @@ fn main() {
 mod tests {
     use super::*;
 
+    fn done<T>(t: T) -> IResult<&'static [u8], T> {
+        IResult::Done(&b""[..], t)
+    }
+
+    fn done_leftover<T>(l: &'static [u8], t: T) -> IResult<&'static [u8], T> {
+        IResult::Done(l, t)
+    }
+
     #[test]
     fn test_parse_number() {
-        assert_eq!(expr(b"1"), IResult::Done(&b""[..], Expr::Number(1)));
-        assert_eq!(expr(b"10"), IResult::Done(&b""[..], Expr::Number(10)));
+        assert_eq!(expr(b"1"), done(Expr::Number(1)));
+        assert_eq!(expr(b"10"), done(Expr::Number(10)));
     }
 
     #[test]
     fn test_parse_operator() {
-        assert_eq!(operator(b"+"), IResult::Done(&b""[..], Symbol::Plus));
-        assert_eq!(operator(b"-"), IResult::Done(&b""[..], Symbol::Minus));
-        assert_eq!(operator(b"*"), IResult::Done(&b""[..], Symbol::Mult));
-        assert_eq!(operator(b"/"), IResult::Done(&b""[..], Symbol::Div));
+        assert_eq!(operator(b"+"), done(Symbol::Plus));
+        assert_eq!(operator(b"-"), done(Symbol::Minus));
+        assert_eq!(operator(b"*"), done(Symbol::Mult));
+        assert_eq!(operator(b"/"), done(Symbol::Div));
     }
 
     #[test]
     fn test_parse_expr() {
         let e = Expr::from_expression(
             Expression::from_tuple((Symbol::Plus, vec![Expr::Number(1),
-                                                         Expr::Number(2)])));
-        assert_eq!(expr(b"(+ 1 2)"), IResult::Done(&b""[..], e.clone()));
-        assert_eq!(expr(b"( + 1 2 )"), IResult::Done(&b""[..], e.clone()));
-        assert_eq!(expr(b"(    +   1    2   )"), IResult::Done(&b""[..], e.clone()));
-        assert_eq!(expr(b"  (    +   1    2   )"), IResult::Done(&b""[..], e.clone()));
+                                                       Expr::Number(2)])));
+        assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
+        assert_eq!(expr(b"( + 1 2 )"), done(e.clone()));
+        assert_eq!(expr(b"(    +   1    2   )"), done(e.clone()));
+        assert_eq!(expr(b"  (    +   1    2   )"), done(e.clone()));
+        assert_eq!(expr(b"(    +   1    2   )  "), done_leftover(&b"  "[..], e.clone()));
     }
 
-    fn eval_expr(input: &str) -> i64 {
-        let (_, e) = expr(input.as_bytes()).unwrap();
-        eval(e).unwrap()
+    fn eval_expr(input: &'static str) -> IResult<&[u8], i64> {
+        expr(input.as_bytes()).map(|e| eval(e).unwrap())
     }
 
     #[test]
     fn test_eval() {
-        assert_eq!(eval_expr("1"), 1);
-        assert_eq!(eval_expr("(+ 1 0)"), 1);
-        assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), 14);
+        assert_eq!(eval_expr("1"), done(1));
+        assert_eq!(eval_expr("(+ 1 0)"), done(1));
+        assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), done(14));
     }
 }
