@@ -5,3 +5,7 @@ authors = ["Geoff Shannon <geoffpshannon@gmail.com>"]
 
 [dependencies]
 rustyline = "1.0.0"
+
+[dependencies.nom]
+version = "3.2.0"
+features = ["regexp", "verbose-errors"]
