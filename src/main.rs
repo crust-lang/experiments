@@ -102,33 +102,62 @@ named!(pub expr<Expr>,
             map!(expression, Expr::from_expression))
 );
 
-pub fn plus_op(acc: i64, next: i64) -> i64 {
-    acc + next
+#[derive(Clone,Debug,PartialEq)]
+pub enum Error {
+    DivideByZero
 }
 
-pub fn minus_op(acc: i64, next: i64) -> i64 {
-    acc - next
+fn map2<F: Fn(i64, i64) -> Result<i64,Error>>(a: Result<i64, Error>, b: Result<i64, Error>, f: F) -> Result<i64, Error> {
+    match a {
+        Ok(a) => {
+            match b {
+                Ok(b) => f(a,b),
+                Err(_) => b
+            }
+        },
+        Err(_) => a
+    }
 }
 
-pub fn mult_op(acc: i64, next: i64) -> i64 {
-    acc * next
+pub fn plus_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
+    map2(acc, next, |acc, next| {
+        Ok(acc + next)
+    })
 }
 
-pub fn div_op(acc: i64, next: i64) -> i64 {
-    acc / next
+pub fn minus_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
+    map2(acc, next, |acc, next| {
+        Ok(acc - next)
+    })
 }
 
-pub fn eval(e: Expr) -> i64 {
+pub fn mult_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
+    map2(acc, next, |acc, next| {
+        Ok(acc * next)
+    })
+}
+
+pub fn div_op(acc: Result<i64,Error>, next: Result<i64,Error>) -> Result<i64, Error> {
+    map2(acc, next, |acc, next| {
+        if next == 0 {
+            Err(Error::DivideByZero)
+        } else {
+            Ok(acc / next)
+        }
+    })
+}
+
+pub fn eval(e: Expr) -> Result<i64, Error> {
     match e {
-        Expr::Number(x) => x,
+        Expr::Number(x) => Ok(x),
         Expr::Expression(e) => {
             let op_fn = match e.operator {
-                Operator::Plus  => plus_op  as fn(i64, i64) -> i64,
-                Operator::Minus => minus_op as fn(i64, i64) -> i64,
-                Operator::Mult  => mult_op  as fn(i64, i64) -> i64,
-                Operator::Div   => div_op   as fn(i64, i64) -> i64,
+                Operator::Plus  => plus_op  as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
+                Operator::Minus => minus_op as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
+                Operator::Mult  => mult_op  as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
+                Operator::Div   => div_op   as fn(Result<i64,Error>, Result<i64,Error>) -> Result<i64, Error>,
             };
-            let mut operands : Vec<i64> = e.operands.into_iter().map(eval).collect();
+            let mut operands : Vec<Result<i64,Error>> = e.operands.into_iter().map(eval).collect();
             let first = operands.swap_remove(0);
             operands.into_iter().fold(first, op_fn)
         }
@@ -201,7 +230,7 @@ mod tests {
 
     fn eval_expr(input: &str) -> i64 {
         let (_, e) = expr(input.as_bytes()).unwrap();
-        eval(e)
+        eval(e).unwrap()
     }
 
     #[test]
