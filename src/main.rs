@@ -182,11 +182,10 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(&line);
                 match expr(line.as_bytes()) {
-                    IResult::Done(_, e) => println!("No you're a {:?}", eval(e)),
+                    IResult::Done(_, e) => println!("{:?}", eval(e)),
                     IResult::Incomplete(rest) => println!("Incomplete input: {:?}", rest),
                     IResult::Error(_) => ()
                 }
-
             },
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
