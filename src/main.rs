@@ -191,13 +191,17 @@ pub fn eval(e: Expr) -> Result<Expr, Error> {
         x @ Expr::Number(_) => Ok(x),
         s @ Expr::Symbol(_) => Ok(s),
         Expr::SExpr(e) => {
-            let mut els: Vec<Result<Expr, Error>> = e.els.into_iter().map(eval).collect();
-            let mut op = match els.remove(0) {
-                Ok(Expr::Symbol(name)) => fn_from_sym_name(&name),
-                e => mk_error_op(e),
-            };
-            let first = els.remove(0);
-            els.iter().fold(first, |x, y| op(x, y))
+            if e.els.len() > 1 {
+                let mut els: Vec<Result<Expr, Error>> = e.els.into_iter().map(eval).collect();
+                let mut op = match els.remove(0) {
+                    Ok(Expr::Symbol(name)) => fn_from_sym_name(&name),
+                    e => mk_error_op(e),
+                };
+                let first = els.remove(0);
+                els.iter().fold(first, |x, y| op(x, y))
+            } else {
+                Ok(Expr::SExpr(e))
+            }
         }
     }
 }
