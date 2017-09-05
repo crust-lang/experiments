@@ -37,8 +37,8 @@ impl Expr {
         Expr::SExpr(e)
     }
 
-    fn from_str(s: &str) -> Self {
-        Expr::Symbol(s.to_string())
+    fn from_str<S: Into<String>>(s: S) -> Self {
+        Expr::Symbol(s.into())
     }
 }
 
