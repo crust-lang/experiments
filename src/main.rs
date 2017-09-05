@@ -96,60 +96,95 @@ named!(pub line<Expr>,
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Error {
-    DivideByZero
+    UnknownFunction,
+    DivideByZero,
+    MisMatchedArguments(Box<Expr>, Box<Expr>)
 }
 
-fn map2<F: Fn(Expr, Expr) -> Result<Expr,Error>>(a: Result<Expr, Error>, b: Result<Expr, Error>, f: F) -> Result<Expr, Error> {
+fn map2<F: Fn(Expr, Expr) -> Result<Expr,Error>>(a: Result<Expr, Error>, b: &Result<Expr, Error>, f: F) -> Result<Expr, Error> {
     match a {
         Ok(a) => {
-            match b {
-                Ok(b) => f(a,b),
-                Err(_) => b
+            match b.clone() {
+                Ok(b) => f(a, b),
+                b @ Err(_) => b
             }
         },
         Err(_) => a
     }
 }
 
-// pub fn plus_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
-//     map2(acc, next, |acc, next| {
-//         Ok(acc + next)
-//     })
-// }
+pub fn plus_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
+    map2(acc, next, |acc, next| {
+        match (acc, next) {
+            (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc + next)),
+            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
+        }
+    })
+}
 
-// pub fn minus_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
-//     map2(acc, next, |acc, next| {
-//         Ok(acc - next)
-//     })
-// }
+pub fn minus_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
+    map2(acc, next, |acc, next| {
+        match (acc, next) {
+            (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc - next)),
+            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
+        }
+    })
+}
 
-// pub fn mult_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
-//     map2(acc, next, |acc, next| {
-//         Ok(acc * next)
-//     })
-// }
+pub fn mult_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
+    map2(acc, next, |acc, next| {
+        match (acc, next) {
+            (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc * next)),
+            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
+        }
 
-// pub fn div_op(acc: Result<Expr,Error>, next: Result<Expr,Error>) -> Result<Expr, Error> {
-//     map2(acc, next, |acc, next| {
-//         if next == 0 {
-//             Err(Error::DivideByZero)
-//         } else {
-//             Ok(acc / next)
-//         }
-//     })
-// }
+    })
+}
 
-// pub fn eval(e: Expr) -> Result<Expr, Error> {
-//     match e {
-//         Expr::Number(x) => Ok(x),
-//         Expr::Symbol(s) => Ok(s),
-//         Expr::Expression(e) => {
-//             let mut els : Vec<Result<Expr,Error>> = e.els.into_iter().map(eval).collect();
-//             let first = els.swap_remove(0);
-//             els.into_iter().fold(first, plus_op)
-//         }
-//     }
-//}
+pub fn div_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
+    map2(acc, next, |acc, next| {
+        match (acc, next) {
+            (Expr::Number(acc), Expr::Number(next)) => {
+                if next == 0 {
+                    Err(Error::DivideByZero)
+                } else {
+                    Ok(Expr::Number(acc / next))
+                }
+            }
+            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
+        }
+    })
+}
+
+pub fn mk_error_op(e: Result<Expr, Error>) -> Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>> {
+    Box::new(move |_, _| e.clone())
+}
+
+pub fn fn_from_sym_name(name: &str) -> Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>> {
+    match name {
+        "+" => Box::new(plus_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
+        "-" => Box::new(minus_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
+        "*" => Box::new(mult_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
+        "/" => Box::new(div_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
+        _ => mk_error_op(Err(Error::UnknownFunction))
+    }
+}
+
+pub fn eval(e: Expr) -> Result<Expr, Error> {
+    match e {
+        x @ Expr::Number(_) => Ok(x),
+        s @ Expr::Symbol(_) => Ok(s),
+        Expr::Expression(e) => {
+            let mut els : Vec<Result<Expr, Error>> = e.els.into_iter().map(eval).collect();
+            let mut op = match els.remove(0) {
+                Ok(Expr::Symbol(name)) => fn_from_sym_name(&name),
+                e => mk_error_op(e),
+            };
+            let first = els.remove(0);
+            els.iter().fold(first, |x, y| op(x, y))
+        }
+    }
+}
 
 fn main() {
     let mut rl = Editor::<()>::new();
@@ -163,7 +198,12 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(&line);
                 match expr(line.as_bytes()) {
-                    IResult::Done(_, e) => println!("{:?}", e),
+                    IResult::Done(_, e) => {
+                        match eval(e) {
+                            Ok(res) => println!("{:?}", res),
+                            Err(err) => println!("Error: {:?}", err),
+                        }
+                    },
                     IResult::Incomplete(rest) => println!("Incomplete input: {:?}", rest),
                     IResult::Error(_) => ()
                 }
@@ -224,14 +264,15 @@ mod tests {
         assert_eq!(line(b"(    +   1    2   )  "), done(e.clone()));
     }
 
-    // fn eval_expr(input: &'static str) -> IResult<&[u8], Expr> {
-    //     expr(input.as_bytes()).map(|e| eval(e).unwrap())
-    // }
+    fn eval_expr(input: &'static str) -> IResult<&[u8], Expr> {
+        expr(input.as_bytes()).map(|e| eval(e).unwrap())
+    }
 
-    // #[test]
-    // fn test_eval() {
-    //     assert_eq!(eval_expr("1"), done(1));
-    //     assert_eq!(eval_expr("(+ 1 0)"), done(1));
-    //     assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), done(14));
-    // }
+    #[test]
+    fn test_eval() {
+        assert_eq!(eval_expr("1"), done(Expr::Number(1)));
+        assert_eq!(eval_expr("(+ 1 0)"), done(Expr::Number(1)));
+        assert_eq!(eval_expr("(- 5 2)"), done(Expr::Number(3)));
+        assert_eq!(eval_expr("(+ 1 (- 5 2) 10)"), done(Expr::Number(14)));
+    }
 }
