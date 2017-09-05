@@ -61,11 +61,8 @@ impl Expr {
     }
 }
 
-named!(pub symbol<Expr>,
-       map!(
-           many_till!(call!(anychar), peek!(one_of!("() \t\r\n"))),
-           Expr::from_symbol
-       )
+named!(pub symbol<(Vec<char>, char)>,
+       many_till!(call!(anychar), peek!(one_of!("() \t\r\n")))
 );
 
 named!(pub sexpr<SExpr>,
@@ -86,8 +83,8 @@ named!(pub sexpr<SExpr>,
 
 named!(pub expr<Expr>,
        alt!(map!(number, Expr::from_digit) |
-            map!(sexpr, Expr::from_sexpr) |
-            symbol)
+            map!(sexpr,  Expr::from_sexpr) |
+            map!(symbol, Expr::from_symbol))
 );
 
 named!(pub line<Expr>,
