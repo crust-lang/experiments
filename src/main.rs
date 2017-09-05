@@ -64,11 +64,10 @@ fn valid_char(c: u8) -> bool {
     match c {
         b'a'...b'z' |
         b'A'...b'Z' |
-        b'0'...b'9' |
+        b'-'...b'?' | // Includes 0-9
         b'*' | b'+' |
-        b'-' | b'_' |
-        b'!' | b'?' |
-        b'/' | b'\'' => true,
+        b'!' | b'_' |
+        b'\'' => true,
         _ => false,
     }
 }
