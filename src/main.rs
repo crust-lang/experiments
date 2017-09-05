@@ -47,7 +47,7 @@ impl Expr {
         Expr::Number(x)
     }
 
-    fn from_symbol((s, _): (Vec<char>, char)) -> Self {
+    fn from_char_vec(s: Vec<char>) -> Self {
         let str : String = String::from_iter(s);
         Expr::Symbol(str)
     }
@@ -56,13 +56,16 @@ impl Expr {
         Expr::SExpr(e)
     }
 
-    fn symbol_from_string(s: &str) -> Self {
+    fn from_str(s: &str) -> Self {
         Expr::Symbol(s.to_string())
     }
 }
 
-named!(pub symbol<(Vec<char>, char)>,
-       many_till!(call!(anychar), peek!(one_of!("() \t\r\n")))
+named!(pub symbol<Vec<char>>,
+       map!(
+           many_till!(call!(anychar), peek!(one_of!("() \t\r\n"))),
+           |(v, _)| v
+       )
 );
 
 named!(pub sexpr<SExpr>,
@@ -84,7 +87,7 @@ named!(pub sexpr<SExpr>,
 named!(pub expr<Expr>,
        alt!(map!(number, Expr::from_digit) |
             map!(sexpr,  Expr::from_sexpr) |
-            map!(symbol, Expr::from_symbol))
+            map!(symbol, Expr::from_char_vec))
 );
 
 named!(pub line<Expr>,
@@ -242,16 +245,16 @@ mod tests {
 
     #[test]
     fn test_parse_symbol() {
-        assert_eq!(symbol(b"+ "), done_leftover(&b" "[..], Expr::symbol_from_string("+")));
-        assert_eq!(symbol(b"- "), done_leftover(&b" "[..], Expr::symbol_from_string("-")));
-        assert_eq!(symbol(b"* "), done_leftover(&b" "[..], Expr::symbol_from_string("*")));
-        assert_eq!(symbol(b"/ "), done_leftover(&b" "[..], Expr::symbol_from_string("/")));
+        assert_eq!(symbol(b"+ "), done_leftover(&b" "[..], vec!['+']));
+        assert_eq!(symbol(b"- "), done_leftover(&b" "[..], vec!['-']));
+        assert_eq!(symbol(b"* "), done_leftover(&b" "[..], vec!['*']));
+        assert_eq!(symbol(b"/ "), done_leftover(&b" "[..], vec!['/']));
     }
 
     #[test]
     fn test_parse_expr() {
         let e = Expr::from_sexpr(
-            SExpr::from_tuple(vec![Expr::symbol_from_string("+"),
+            SExpr::from_tuple(vec![Expr::from_str("+"),
                                    Expr::Number(1),
                                    Expr::Number(2)]));
         assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
