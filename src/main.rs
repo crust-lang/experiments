@@ -2,7 +2,7 @@
 extern crate nom;
 extern crate rustyline;
 
-use nom::{IResult,anychar,digit,multispace};
+use nom::{IResult, anychar, digit, multispace};
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -22,20 +22,18 @@ named!(pub number<i64>,
        )
 );
 
-#[derive(Clone,Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SExpr {
-    els: Vec<Expr>
+    els: Vec<Expr>,
 }
 
 impl SExpr {
     fn from_tuple(els: Vec<Expr>) -> Self {
-        Self {
-            els: els,
-        }
+        Self { els: els }
     }
 }
 
-#[derive(Clone,Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Number(i64),
     Symbol(String),
@@ -48,7 +46,7 @@ impl Expr {
     }
 
     fn from_char_vec(s: Vec<char>) -> Self {
-        let str : String = String::from_iter(s);
+        let str: String = String::from_iter(s);
         Expr::Symbol(str)
     }
 
@@ -94,79 +92,90 @@ named!(pub line<Expr>,
        ws!(expr)
 );
 
-#[derive(Clone,Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     UnknownFunction,
     DivideByZero,
-    MisMatchedArguments(Box<Expr>, Box<Expr>)
+    MisMatchedArguments(Box<Expr>, Box<Expr>),
 }
 
-fn map2<F: Fn(Expr, Expr) -> Result<Expr,Error>>(a: Result<Expr, Error>, b: &Result<Expr, Error>, f: F) -> Result<Expr, Error> {
+fn map2<F: Fn(Expr, Expr) -> Result<Expr, Error>>(
+    a: Result<Expr, Error>,
+    b: &Result<Expr, Error>,
+    f: F,
+) -> Result<Expr, Error> {
     match a {
         Ok(a) => {
             match b.clone() {
                 Ok(b) => f(a, b),
-                b @ Err(_) => b
+                b @ Err(_) => b,
             }
-        },
-        Err(_) => a
+        }
+        Err(_) => a,
     }
 }
 
 pub fn plus_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
-    map2(acc, next, |acc, next| {
-        match (acc, next) {
-            (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc + next)),
-            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
-        }
+    map2(acc, next, |acc, next| match (acc, next) {
+        (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc + next)),
+        (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next))),
     })
 }
 
 pub fn minus_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
-    map2(acc, next, |acc, next| {
-        match (acc, next) {
-            (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc - next)),
-            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
-        }
+    map2(acc, next, |acc, next| match (acc, next) {
+        (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc - next)),
+        (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next))),
     })
 }
 
 pub fn mult_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
-    map2(acc, next, |acc, next| {
-        match (acc, next) {
-            (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc * next)),
-            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
-        }
-
+    map2(acc, next, |acc, next| match (acc, next) {
+        (Expr::Number(acc), Expr::Number(next)) => Ok(Expr::Number(acc * next)),
+        (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next))),
     })
 }
 
 pub fn div_op(acc: Result<Expr, Error>, next: &Result<Expr, Error>) -> Result<Expr, Error> {
-    map2(acc, next, |acc, next| {
-        match (acc, next) {
-            (Expr::Number(acc), Expr::Number(next)) => {
-                if next == 0 {
-                    Err(Error::DivideByZero)
-                } else {
-                    Ok(Expr::Number(acc / next))
-                }
+    map2(acc, next, |acc, next| match (acc, next) {
+        (Expr::Number(acc), Expr::Number(next)) => {
+            if next == 0 {
+                Err(Error::DivideByZero)
+            } else {
+                Ok(Expr::Number(acc / next))
             }
-            (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next)))
         }
+        (acc, next) => Err(Error::MisMatchedArguments(Box::new(acc), Box::new(next))),
     })
 }
 
-pub fn mk_error_op(e: Result<Expr, Error>) -> Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>> {
+pub fn mk_error_op(
+    e: Result<Expr, Error>,
+) -> Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>> {
     Box::new(move |_, _| e.clone())
 }
 
-pub fn fn_from_sym_name(name: &str) -> Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>> {
+pub fn fn_from_sym_name(
+    name: &str,
+) -> Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>> {
     match name {
-        "+" => Box::new(plus_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
-        "-" => Box::new(minus_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
-        "*" => Box::new(mult_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
-        "/" => Box::new(div_op) as Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>,
-        _ => mk_error_op(Err(Error::UnknownFunction))
+        "+" => {
+            Box::new(plus_op) as
+                Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>
+        }
+        "-" => {
+            Box::new(minus_op) as
+                Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>
+        }
+        "*" => {
+            Box::new(mult_op) as
+                Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>
+        }
+        "/" => {
+            Box::new(div_op) as
+                Box<FnMut(Result<Expr, Error>, &Result<Expr, Error>) -> Result<Expr, Error>>
+        }
+        _ => mk_error_op(Err(Error::UnknownFunction)),
     }
 }
 
@@ -175,7 +184,7 @@ pub fn eval(e: Expr) -> Result<Expr, Error> {
         x @ Expr::Number(_) => Ok(x),
         s @ Expr::Symbol(_) => Ok(s),
         Expr::SExpr(e) => {
-            let mut els : Vec<Result<Expr, Error>> = e.els.into_iter().map(eval).collect();
+            let mut els: Vec<Result<Expr, Error>> = e.els.into_iter().map(eval).collect();
             let mut op = match els.remove(0) {
                 Ok(Expr::Symbol(name)) => fn_from_sym_name(&name),
                 e => mk_error_op(e),
@@ -203,22 +212,22 @@ fn main() {
                             Ok(res) => println!("{:?}", res),
                             Err(err) => println!("Error: {:?}", err),
                         }
-                    },
+                    }
                     IResult::Incomplete(rest) => println!("Incomplete input: {:?}", rest),
-                    IResult::Error(_) => ()
+                    IResult::Error(_) => (),
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
-                break
-            },
+                break;
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
-                break
-            },
+                break;
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break
+                break;
             }
         }
     }
@@ -253,10 +262,9 @@ mod tests {
 
     #[test]
     fn test_parse_expr() {
-        let e = Expr::from_sexpr(
-            SExpr::from_tuple(vec![Expr::from_str("+"),
-                                   Expr::Number(1),
-                                   Expr::Number(2)]));
+        let e = Expr::from_sexpr(SExpr::from_tuple(
+            vec![Expr::from_str("+"), Expr::Number(1), Expr::Number(2)],
+        ));
         assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
         assert_eq!(expr(b"( + 1 2 )"), done(e.clone()));
         assert_eq!(expr(b"(    +   1    2   )"), done(e.clone()));
