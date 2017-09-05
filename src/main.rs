@@ -2,12 +2,10 @@
 extern crate nom;
 extern crate rustyline;
 
-use nom::{IResult, anychar, digit, multispace};
+use nom::{IResult, digit, multispace};
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-
-use std::iter::FromIterator;
 
 use std::str;
 use std::str::FromStr;
@@ -33,11 +31,6 @@ pub enum Expr {
 impl Expr {
     fn from_digit(x: i64) -> Self {
         Expr::Number(x)
-    }
-
-    fn from_char_vec(s: Vec<char>) -> Self {
-        let str: String = String::from_iter(s);
-        Expr::Symbol(str)
     }
 
     fn from_sexpr(e: SExpr) -> Self {
@@ -66,10 +59,24 @@ named!(pub number<i64>,
        )
 );
 
-named!(pub symbol<Vec<char>>,
-       map!(
-           many_till!(call!(anychar), peek!(one_of!("() \t\r\n"))),
-           |(v, _)| v
+#[cfg_attr(rustfmt, rustfmt_skip)]
+fn valid_char(c: u8) -> bool {
+    match c {
+        b'a'...b'z' |
+        b'A'...b'Z' |
+        b'0'...b'9' |
+        b'*' | b'+' |
+        b'-' | b'_' |
+        b'!' | b'?' |
+        b'/' | b'\'' => true,
+        _ => false,
+    }
+}
+
+named!(pub symbol<&str>,
+       map_res!(
+           take_while!(valid_char),
+           str::from_utf8
        )
 );
 
@@ -92,7 +99,7 @@ named!(pub sexpr<SExpr>,
 named!(pub expr<Expr>,
        alt!(map!(number, Expr::from_digit) |
             map!(sexpr,  Expr::from_sexpr) |
-            map!(symbol, Expr::from_char_vec))
+            map!(symbol, Expr::from_str))
 );
 
 named!(pub line<Expr>,
@@ -242,10 +249,6 @@ mod tests {
         IResult::Done(&b""[..], t)
     }
 
-    fn done_leftover<T>(l: &'static [u8], t: T) -> IResult<&'static [u8], T> {
-        IResult::Done(l, t)
-    }
-
     #[test]
     fn test_parse_number() {
         assert_eq!(expr(b"1"), done(Expr::Number(1)));
@@ -254,10 +257,10 @@ mod tests {
 
     #[test]
     fn test_parse_symbol() {
-        assert_eq!(symbol(b"+ "), done_leftover(&b" "[..], vec!['+']));
-        assert_eq!(symbol(b"- "), done_leftover(&b" "[..], vec!['-']));
-        assert_eq!(symbol(b"* "), done_leftover(&b" "[..], vec!['*']));
-        assert_eq!(symbol(b"/ "), done_leftover(&b" "[..], vec!['/']));
+        assert_eq!(symbol(b"+"), done("+"));
+        assert_eq!(symbol(b"-"), done("-"));
+        assert_eq!(symbol(b"*"), done("*"));
+        assert_eq!(symbol(b"/"), done("/"));
     }
 
     #[test]
