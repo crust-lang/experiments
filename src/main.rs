@@ -12,16 +12,6 @@ use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
 
-named!(pub number<i64>,
-       map_res!(
-           map_res!(
-               digit,
-               str::from_utf8
-           ),
-           FromStr::from_str
-       )
-);
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct SExpr {
     els: Vec<Expr>,
@@ -59,6 +49,23 @@ impl Expr {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum Error {
+    UnknownFunction,
+    DivideByZero,
+    MisMatchedArguments(Box<Expr>, Box<Expr>),
+}
+
+named!(pub number<i64>,
+       map_res!(
+           map_res!(
+               digit,
+               str::from_utf8
+           ),
+           FromStr::from_str
+       )
+);
+
 named!(pub symbol<Vec<char>>,
        map!(
            many_till!(call!(anychar), peek!(one_of!("() \t\r\n"))),
@@ -91,13 +98,6 @@ named!(pub expr<Expr>,
 named!(pub line<Expr>,
        ws!(expr)
 );
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Error {
-    UnknownFunction,
-    DivideByZero,
-    MisMatchedArguments(Box<Expr>, Box<Expr>),
-}
 
 fn map2<F: Fn(Expr, Expr) -> Result<Expr, Error>>(
     a: Result<Expr, Error>,
