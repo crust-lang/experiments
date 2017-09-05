@@ -23,11 +23,11 @@ named!(pub number<i64>,
 );
 
 #[derive(Clone,Debug,PartialEq)]
-pub struct Expression {
+pub struct SExpr {
     els: Vec<Expr>
 }
 
-impl Expression {
+impl SExpr {
     fn from_tuple(els: Vec<Expr>) -> Self {
         Self {
             els: els,
@@ -39,7 +39,7 @@ impl Expression {
 pub enum Expr {
     Number(i64),
     Symbol(String),
-    Expression(Expression),
+    SExpr(SExpr),
 }
 
 impl Expr {
@@ -52,8 +52,8 @@ impl Expr {
         Expr::Symbol(str)
     }
 
-    fn from_expression(e: Expression) -> Self {
-        Expr::Expression(e)
+    fn from_sexpr(e: SExpr) -> Self {
+        Expr::SExpr(e)
     }
 
     fn symbol_from_string(s: &str) -> Self {
@@ -68,7 +68,7 @@ named!(pub symbol<Expr>,
        )
 );
 
-named!(pub expression<Expression>,
+named!(pub sexpr<SExpr>,
        map!(
            delimited!(
                char!('('),
@@ -80,13 +80,13 @@ named!(pub expression<Expression>,
                ),
                char!(')')
            ),
-           Expression::from_tuple
+           SExpr::from_tuple
        )
 );
 
 named!(pub expr<Expr>,
        alt!(map!(number, Expr::from_digit) |
-            map!(expression, Expr::from_expression) |
+            map!(sexpr, Expr::from_sexpr) |
             symbol)
 );
 
@@ -174,7 +174,7 @@ pub fn eval(e: Expr) -> Result<Expr, Error> {
     match e {
         x @ Expr::Number(_) => Ok(x),
         s @ Expr::Symbol(_) => Ok(s),
-        Expr::Expression(e) => {
+        Expr::SExpr(e) => {
             let mut els : Vec<Result<Expr, Error>> = e.els.into_iter().map(eval).collect();
             let mut op = match els.remove(0) {
                 Ok(Expr::Symbol(name)) => fn_from_sym_name(&name),
@@ -253,10 +253,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr() {
-        let e = Expr::from_expression(
-            Expression::from_tuple(vec![Expr::symbol_from_string("+"),
-                                        Expr::Number(1),
-                                        Expr::Number(2)]));
+        let e = Expr::from_sexpr(
+            SExpr::from_tuple(vec![Expr::symbol_from_string("+"),
+                                   Expr::Number(1),
+                                   Expr::Number(2)]));
         assert_eq!(expr(b"(+ 1 2)"), done(e.clone()));
         assert_eq!(expr(b"( + 1 2 )"), done(e.clone()));
         assert_eq!(expr(b"(    +   1    2   )"), done(e.clone()));
