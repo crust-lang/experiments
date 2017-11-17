@@ -3,4 +3,9 @@ name = "crust-java"
 version = "0.1.0"
 authors = ["Geoff Shannon <geoffpshannon@gmail.com>"]
 
+[lib]
+proc-macro = true
+
 [dependencies]
+syn = "0.11"
+quote = "0.3"
